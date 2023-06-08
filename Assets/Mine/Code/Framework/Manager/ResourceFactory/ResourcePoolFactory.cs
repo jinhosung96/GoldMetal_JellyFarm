@@ -1,10 +1,13 @@
 using System.Collections.Generic;
+using System.Linq;
 using Cysharp.Threading.Tasks;
+using UniRx;
+using UniRx.Triggers;
 using UnityEngine;
 
 namespace Mine.Code.Framework.Manager.ResourceFactory
 {
-    public class ResourcePoolFactory<T> : ResourceFactory<T> where T : Component
+    public class ResourcePoolFactory<T> : ResourceFactory<T> where T : Object
     {
         #region Constructor
 
@@ -14,7 +17,7 @@ namespace Mine.Code.Framework.Manager.ResourceFactory
 
         #region Fields
 
-        readonly Queue<T> pool = new();
+        readonly List<T> pool = new();
         Transform container;
 
         #endregion
@@ -32,7 +35,7 @@ namespace Mine.Code.Framework.Manager.ResourceFactory
 
             for (int i = 0; i < poolSize; i++)
             {
-                pool.Enqueue(await base.LoadAsync());
+                Enqueue(await base.LoadAsync());
             }
         }
 
@@ -42,26 +45,83 @@ namespace Mine.Code.Framework.Manager.ResourceFactory
 
         public override async UniTask<T> LoadAsync(Transform parent = null)
         {
-            if (pool.TryDequeue(out var instance))
+            if (TryDequeue(out var instance))
             {
-                instance.transform.SetParent(parent);
-                instance.gameObject.SetActive(true);
+                if (instance is Component component)
+                {
+                    component.transform.SetParent(parent);
+                    component.gameObject.SetActive(true);
+                }
+                else if (instance is GameObject gameObject)
+                {
+                    gameObject.transform.SetParent(parent);
+                    gameObject.SetActive(true);
+                }
+                
                 return instance;
             }
-            
-            instance = await base.LoadAsync(parent);
+            else
+            {
+                instance = await base.LoadAsync(parent);
 
-            if (instance == null) return instance;
-        
-            instance.gameObject.SetActive(true);
-            return instance;
+                if (instance == null) return instance;
+
+                if (instance is Component component) component.gameObject.SetActive(true);
+                else if (instance is GameObject gameObject) gameObject.SetActive(true);
+                
+                return instance;
+            }
         }
     
-        public override void Release(T instance)
+        public override void Release(T instance) => Enqueue(instance);
+
+        #endregion
+
+        #region Private Methods
+
+        void Enqueue(T instance)
         {
-            instance.gameObject.SetActive(false);
-            instance.transform.SetParent(container);
-            pool.Enqueue(instance);
+            pool.Add(instance);
+
+            if (instance is Component component)
+            {
+                component.gameObject.SetActive(false);
+                component.transform.SetParent(container);
+                component.OnDestroyAsObservable().Subscribe(_ =>
+                {
+#if ADDRESSABLE_SUPPORT
+                    if(isAddressable) Addressables.Release(instance);
+#endif
+                    pool.Remove(instance);
+                });
+            }
+            else if (instance is GameObject gameObject)
+            {
+                gameObject.SetActive(false);
+                gameObject.transform.SetParent(container);
+                gameObject.OnDestroyAsObservable().Subscribe(_ =>
+                {
+#if ADDRESSABLE_SUPPORT
+                    if(isAddressable) Addressables.Release(instance);
+#endif
+                    pool.Remove(instance);
+                });
+            }
+        }
+
+        T Dequeue()
+        {
+            var instance = pool.LastOrDefault();
+            pool.RemoveAt(pool.Count - 1);
+            return instance;
+        }
+        
+        bool TryDequeue(out T instance)
+        {
+            var any = pool.Any();
+            if (any) instance = Dequeue();
+            else instance = null;
+            return any;
         }
 
         #endregion

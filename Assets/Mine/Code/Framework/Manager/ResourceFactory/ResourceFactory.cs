@@ -38,7 +38,7 @@ namespace Mine.Code.Framework.Manager.ResourceFactory
             }
 #endif
 
-            public ResourceFactory<T> Build<T>(string path) where T : Object
+            public ResourceFactory<T> Build(string path)
             {
                 var resourceFactory = new ResourceFactory<T>(
                     path: path,
@@ -49,7 +49,7 @@ namespace Mine.Code.Framework.Manager.ResourceFactory
                 return resourceFactory;
             }
 
-            public ResourceFactory<T> BuildPool<T>(string path, int poolSize) where T : Component
+            public ResourcePoolFactory<T> BuildPool(string path, int poolSize)
             {
                 var resourceFactory = new ResourcePoolFactory<T>(
                     path: path,
@@ -112,7 +112,7 @@ namespace Mine.Code.Framework.Manager.ResourceFactory
 
             if(!resource) return null;
             
-            if (typeof(T).IsAssignableFrom(typeof(Component)) || typeof(T).IsAssignableFrom(typeof(GameObject)))
+            if (typeof(Component).IsAssignableFrom(typeof(T)) || typeof(GameObject).IsAssignableFrom(typeof(T)))
             {
 #if VCONTAINER_SUPPORT
                 if(isInject) return context.Container.Instantiate(resource);
